@@ -1,11 +1,11 @@
-// "Захвати рынок или закрой бизнес" — MVP v3.0 · от 18.08.2026
+// "Захвати рынок или закрой бизнес" — MVP v3.1 · от 18.08.2026
 // Кабинет игрока и администратора. Обращается к Code.gs через fetch()
 // (только GET — см. пояснение внутри apiPost ниже).
 
 // ------------------------------------------------------------ НАСТРОЙКА API
 
 // ⚠️ Единственное место, которое нужно менять при новом деплое Apps Script.
-var EXEC_URL = 'https://script.google.com/macros/s/AKfycbxPEuA7oNxqSTYUpntai-97GB6Z6EQgdWHZBl5ZnqziWN72V47DlMmwsmOd6391YLyL/exec';
+var EXEC_URL = 'ВСТАВЬТЕ_СЮДА_ССЫЛКУ_НА_ВАШ_ДЕПЛОЙ/exec';
 
 // Изредка Apps Script (через распределённую сеть edge-узлов Google) на
 // долю секунды отдаёт HTML-заглушку вместо JSON — особенно заметно при
@@ -296,7 +296,7 @@ function renderPlayerDashboard(d) {
     document.getElementById('p-cash-thb').textContent = '';
     document.getElementById('p-cash-usd').textContent = '';
     document.getElementById('offbusiness-title').textContent = CAREER_LABELS[d.lifecycle];
-    document.getElementById('offbusiness-content').innerHTML = renderOffBusinessContent(d);
+    safeRenderInto('offbusiness-content', renderOffBusinessContent(d));
     document.getElementById('reopen-btn').classList.toggle('hidden', !d.employment.canReopen);
     stopCountdown();
     return;
@@ -343,6 +343,43 @@ function renderPlayerDashboard(d) {
   startCountdown(d.game.roundStatus === 'open' ? d.game.deadline : null, ['p-timer']);
 }
 
+// Кнопки переключения на ДРУГОЙ путь вне бизнеса — на каждом экране не
+// показываем кнопку текущего же пути (незачем "переключаться" сам на себя).
+function careerSwitchButtonsHtml(excludePath) {
+  var options = [
+    ['civil_service', 'Госслужба'],
+    ['freelance', 'Свободное плавание'],
+    ['custom', 'Своя профессия']
+  ].filter(function (o) { return o[0] !== excludePath; });
+  var html = '<div class="career-actions" style="margin-top:14px;">';
+  options.forEach(function (o) {
+    if (o[0] === 'custom') {
+      html += '<button class="btn-secondary" onclick="toggleCustomProfessionForm(\'switch\')">' + o[1] + '</button>';
+    } else {
+      html += '<button class="btn-secondary" onclick="chooseCareerPath(\'' + o[0] + '\', this)">' + o[1] + '</button>';
+    }
+  });
+  html += '</div>' +
+    '<div id="custom-profession-form-switch" class="hidden custom-profession-form">' +
+    '<input type="text" id="custom-profession-name-switch" placeholder="Название профессии">' +
+    '<button class="btn-secondary" onclick="submitCustomProfession(\'switch\', this)">Продолжить</button></div>';
+  return html;
+}
+
+// Периодический опрос (каждые ~8 сек) раньше перерисовывал этот блок
+// БЕЗУСЛОВНО через innerHTML — а innerHTML не "обновляет" поля ввода,
+// а физически уничтожает их и создаёт заново пустыми. Если человек в
+// этот момент печатал (например, желаемую зарплату), ввод стирался.
+// Теперь: если фокус сейчас внутри этого блока — просто пропускаем
+// перерисовку на этом цикле, ничего не трогаем.
+function safeRenderInto(containerId, html) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var active = document.activeElement;
+  if (active && container.contains(active)) return;
+  container.innerHTML = html;
+}
+
 function renderOffBusinessContent(d) {
   var html = '<table class="pl-table">' +
     '<tr><td>Накоплено</td><td>' + fmtMoney(d.employment.savings) + '</td></tr>' +
@@ -352,6 +389,7 @@ function renderOffBusinessContent(d) {
     html += '<tr><td>Зарплата</td><td>' + fmtMoney(d.employment.salary) + '/мес</td></tr></table>' +
       '<p class="muted">Зарплата начисляется автоматически каждый закрытый месяц. Не забудьте зачитать ' +
       'остальным короткую рекламу госбанка — по легенде это ваша обязанность (в игре не проверяется).</p>';
+    html += careerSwitchButtonsHtml('civil_service');
     return html;
   }
 
@@ -362,6 +400,7 @@ function renderOffBusinessContent(d) {
     if (d.otherActivePlayers && d.otherActivePlayers.length) {
       html += '<p class="muted">Сейчас активны: ' + d.otherActivePlayers.map(function (p) { return p.restaurant; }).join(', ') + '.</p>';
     }
+    html += careerSwitchButtonsHtml('freelance');
     return html;
   }
 
@@ -391,6 +430,11 @@ function renderOffBusinessContent(d) {
       select.appendChild(opt);
     });
   }, 0);
+
+  // Пока ждёт согласования (или уже работает, но недоволен) — тоже можно
+  // передумать и уйти на другой путь, не дожидаясь ответа нанимателя.
+  html += '<p class="muted" style="margin-top:14px;">Не хотите больше ждать согласования или работать здесь?</p>';
+  html += careerSwitchButtonsHtml('custom');
 
   return html;
 }
@@ -492,6 +536,8 @@ function renderLastResult(r) {
   document.getElementById('r-mk-affiliate').textContent = fmtMoney(r.marketingByChannel.affiliate);
 }
 
+var decisionFormInitializedForRound = null;
+
 function renderDecisionForm(d) {
   var form = document.getElementById('decision-form');
   var waiting = document.getElementById('decision-waiting');
@@ -509,7 +555,15 @@ function renderDecisionForm(d) {
   } else {
     form.classList.remove('hidden');
     document.getElementById('decision-title').textContent = 'Решение на месяц ' + d.game.roundNumber;
-    if (!document.getElementById('f-price').value) document.getElementById('f-price').value = 300;
+    // Значение по умолчанию для цены — ТОЛЬКО при первом появлении формы
+    // для этого конкретного месяца, не на каждый опрос (раньше проверка
+    // "если поле пустое" срабатывала на каждый цикл — обычно безобидно,
+    // но при определённых мобильных сценариях число могло промежуточно
+    // выглядеть пустым во время ввода, и опрос успевал его перетереть).
+    if (decisionFormInitializedForRound !== d.game.roundNumber) {
+      decisionFormInitializedForRound = d.game.roundNumber;
+      if (!document.getElementById('f-price').value) document.getElementById('f-price').value = 300;
+    }
   }
 }
 
