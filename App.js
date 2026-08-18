@@ -5,7 +5,7 @@
 // ------------------------------------------------------------ НАСТРОЙКА API
 
 // ⚠️ Единственное место, которое нужно менять при новом деплое Apps Script.
-var EXEC_URL = 'ВСТАВЬТЕ_СЮДА_ССЫЛКУ_НА_ВАШ_ДЕПЛОЙ/exec';
+var EXEC_URL = 'https://script.google.com/macros/s/AKfycbxPEuA7oNxqSTYUpntai-97GB6Z6EQgdWHZBl5ZnqziWN72V47DlMmwsmOd6391YLyL/exec';
 
 // Изредка Apps Script (через распределённую сеть edge-узлов Google) на
 // долю секунды отдаёт HTML-заглушку вместо JSON — особенно заметно при
