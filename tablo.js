@@ -2,7 +2,7 @@
 // Табло для проектора/ТВ. Обращается к Code.gs через fetch() (только GET).
 
 // ⚠️ Та же ссылка, что и в App.js. Меняется в двух местах при новом деплое.
-var EXEC_URL = 'ВСТАВЬТЕ_СЮДА_ССЫЛКУ_НА_ВАШ_ДЕПЛОЙ/exec';
+var EXEC_URL = 'https://script.google.com/macros/s/AKfycbxPEuA7oNxqSTYUpntai-97GB6Z6EQgdWHZBl5ZnqziWN72V47DlMmwsmOd6391YLyL/exec';
 
 var METRIC_LABELS = {
   profit: 'Прибыль, ฿',
